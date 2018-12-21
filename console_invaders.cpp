@@ -46,13 +46,15 @@ float get_time_millies(clock_t t) {
     return ((float) t) / CLOCKS_PER_SEC * 1000;
 }
 
-void move_player(struct player *p, int dir) {
-    p->x += dir;
+void move_player(struct player *p, int dir, int screen_width) {
+    if (p->x + dir >= 0 && p->x + dir + p->w <= screen_width) {
+        p->x += dir;
+    }
 }
 
 void player_fire(struct player p, list<struct bullet> *bullets) {
     struct bullet * b = (struct bullet *) malloc (sizeof (struct bullet));
-    b->x = p.x + p.w/2 + 1;
+    b->x = p.x + p.w/2;
     b->y = p.y;
     b->going_up = TRUE;
     b->ticks = clock();
@@ -85,7 +87,7 @@ int main() {
     // initialize scene variables
     int scr_height, scr_width;
     int delta_y, delta_x;
-    int game_width = 45;
+    int game_width = 60;
     int game_height = 30;
     clock_t ticks;
     srand(time(NULL));
@@ -125,25 +127,6 @@ int main() {
     int ch;
     ticks = clock();
     for (;;) {
-        // get input
-        if ( (ch = getch()) != ERR) {
-            switch (ch) {
-                case KEY_LEFT:
-                case 'A':
-                case 'a':
-                    move_player(&player_1, -1);
-                    break;
-                case KEY_RIGHT:
-                case 'D':
-                case 'd':
-                    move_player(&player_1, 1);
-                    break;
-
-                case ' ':
-                    player_fire(player_1, &bullets);
-                    break;
-            }
-        }
 
         // aliens update
         if (get_time_millies(clock() - ticks) >= action) {
@@ -188,10 +171,28 @@ int main() {
         // clean the screen
         werase(stdscr);
 
+        //draw the borders
+        {
+            for (int i = delta_x - 1; i < scr_width - delta_x + 1; i++) {
+                mvaddch(delta_y - 1, i, '-');
+                mvaddch(delta_y + game_height, i, '-');
+            }
+
+            for (int i = delta_y; i < scr_height - delta_y; i++) {
+                mvaddch(i, delta_x - 1, '|');
+                mvaddch(i, delta_x + game_width, '|');
+            }
+
+            mvaddch(delta_y - 1, delta_x - 1, '+');
+            mvaddch(delta_y - 1, delta_x + game_width, '+');
+            mvaddch(delta_y + game_height, delta_x - 1, '+');
+            mvaddch(delta_y + game_height, delta_x + game_width, '+');
+        }
+
         // update scene variables
         getmaxyx(stdscr, scr_height, scr_width);
-        delta_y = scr_height / 2 - game_height / 2;
-        delta_x = scr_width / 2 - game_width / 2;
+        delta_y = (scr_height - game_height) / 2;
+        delta_x = (scr_width - game_width) / 2;
 
         // draw the aliens
         for (int i = 0; i < aliens.size(); i ++) {
@@ -219,6 +220,26 @@ int main() {
         for (int x = 0; x < player_1.w; x ++) {
             for (int y = 0; y < player_1.h; y ++) {
                 mvaddch(delta_y + player_1.y + y, delta_x + player_1.x + x, player_sp[y][x]);
+            }
+        }
+
+        // get input
+        if ( (ch = getch()) != ERR) {
+            switch (ch) {
+                case KEY_LEFT:
+                case 'A':
+                case 'a':
+                move_player(&player_1, -1, game_width);
+                break;
+                case KEY_RIGHT:
+                case 'D':
+                case 'd':
+                move_player(&player_1, 1, game_width);
+                break;
+
+                case ' ':
+                player_fire(player_1, &bullets);
+                break;
             }
         }
     }
