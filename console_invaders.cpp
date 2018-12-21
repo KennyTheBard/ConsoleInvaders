@@ -1,4 +1,5 @@
 #include <ncurses.h>
+#include <string.h>
 
 #include <cstdlib>
 #include <ctime>
@@ -35,6 +36,7 @@ struct bullet {
     int x, y;
     bool going_up;
     float ticks;
+    bool active;
 };
 
 struct player {
@@ -58,6 +60,7 @@ void player_fire(struct player p, list<struct bullet> *bullets) {
     b->y = p.y;
     b->going_up = TRUE;
     b->ticks = clock();
+    b->active = TRUE;
     bullets->push_back(*b);
 }
 
@@ -67,11 +70,26 @@ void alien_fire(struct alien a, list<struct bullet> *bullets) {
     b->y = a.y;
     b->going_up = FALSE;
     b->ticks = clock();
+    b->active = TRUE;
     bullets->push_back(*b);
 }
 
-bool onScreen(int h, int w, int y, int x) {
-    return (x >= 0 && x < w && y >= 0 && y < h);
+bool in_rectangle(int h_min, int w_min, int h_max, int w_max, int y, int x) {
+    return (x >= w_min && x < w_max && y >= h_min && y < h_max);
+}
+
+void destroy_alien(struct alien *a, int *score, float *action) {
+    a->active = FALSE;
+    (*score) += 70 - (*action) / FRAME_DURATION_MILLIES;
+    (*action) -= 3.5 * FRAME_DURATION_MILLIES;
+}
+
+void lose() {
+
+}
+
+void win() {
+
 }
 
 int main() {
@@ -94,8 +112,14 @@ int main() {
 
     vector<struct alien> aliens;
     list<bullet> bullets;
+    float bullet_speed_millis = 120;
+
     struct player player_1;
-    float bullet_speed_millis = 200;
+    int score = 0;
+    clock_t cd = clock();
+
+    char game_name[] = "> CONSOLE INVADERS <\n";
+    char score_text[] = ":SCORE\n";
 
     // add player
     {
@@ -156,14 +180,58 @@ int main() {
             }
         }
 
+        for (int i = 0; i < aliens.size(); i ++) {
+            if (aliens[i].y + aliens[i].h >= player_1.y) {
+                if (aliens[i].y + aliens[i].h >= game_height) {
+                    lose();
+                }
+
+                if (in_rectangle(player_1.y, player_1.x, player_1.y + player_1.h,
+                    player_1.x + player_1.w, aliens[i].y + aliens[i].h, aliens[i].x)
+                    || in_rectangle(player_1.y, player_1.x, player_1.y + player_1.h,
+                    player_1.x + player_1.w, aliens[i].y + aliens[i].h, aliens[i].x + aliens[i].w - 1)) {
+                        lose();
+                    }
+            }
+        }
+
         // bullets update
         for (list<struct bullet>::iterator it = bullets.begin(); it != bullets.end(); it++) {
+            if (!(*it).active) {
+                continue;
+            }
+
             if (get_time_millies(clock() - (*it).ticks) > bullet_speed_millis) {
                 (*it).ticks = clock();
                 if ((*it).going_up) {
                     (*it).y += -1;
                 } else {
                     (*it).y += 1;
+                }
+            }
+
+            if ((*it).y < 0 || (*it).y >= game_height) {
+                (*it).active = FALSE;
+                continue;
+            }
+
+            if ((*it).going_up) {
+                // alien collision
+                int n = aliens.size() - 1;
+                if (in_rectangle(aliens[0].y, aliens[0].x, aliens[n].y + aliens[n].h, aliens[n].x + aliens[n].w, (*it).y, (*it).x)) {
+                    for (int i = 0; i < aliens.size(); i ++) {
+                        if (aliens[i].active) {
+                            if (in_rectangle(aliens[i].y, aliens[i].x, aliens[i].y + aliens[i].h, aliens[i].x + aliens[i].w, (*it).y, (*it).x)) {
+                                destroy_alien(&aliens[i], &score, &action);
+                                (*it).active = FALSE;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // ship collision
+                if (in_rectangle(player_1.y, player_1.x, player_1.y + player_1.h, player_1.x + player_1.w, (*it).y, (*it).x)) {
+                    lose();
                 }
             }
         }
@@ -190,16 +258,40 @@ int main() {
         }
 
         // update scene variables
-        getmaxyx(stdscr, scr_height, scr_width);
-        delta_y = (scr_height - game_height) / 2;
-        delta_x = (scr_width - game_width) / 2;
+        {
+            getmaxyx(stdscr, scr_height, scr_width);
+            delta_y = (scr_height - game_height) / 2;
+            delta_x = (scr_width - game_width) / 2;
+        }
+
+        // draw title
+        {
+            int game_name_start = delta_x + game_width / 2 - strlen(game_name) / 2;
+            for (int i = 0; i < strlen(game_name); i++) {
+                mvaddch(delta_y - 2, game_name_start + i, game_name[i]);
+            }
+        }
+
+        // draw score bar
+        int score_text_start = delta_x + game_width - 20;
+        for (int i = 0; i < strlen(score_text); i++) {
+            mvaddch(delta_y + game_height + 1, score_text_start + i, score_text[i]);
+        }
+        for (int i = 1; i < 6; i ++) {
+            int num = score;
+            for (int k = 1; k < i; k ++) {
+                num /= 10;
+            }
+            char c = num % 10 + '0';
+            mvaddch(delta_y + game_height + 1, score_text_start - i , c);
+        }
 
         // draw the aliens
         for (int i = 0; i < aliens.size(); i ++) {
             if (aliens[i].active) {
                 for (int x = 0; x < aliens[i].w; x ++) {
                     for (int y = 0; y < aliens[i].h; y ++) {
-                        if (onScreen(scr_height, scr_width, delta_y + aliens[i].y + y, delta_x + aliens[i].x + x)) {
+                        if (in_rectangle(0, 0, scr_height, scr_width, delta_y + aliens[i].y + y, delta_x + aliens[i].x + x)) {
                             mvaddch(delta_y + aliens[i].y + y, delta_x + aliens[i].x + x, alien_sp[y][x]);
                         }
                     }
@@ -209,10 +301,12 @@ int main() {
 
         // draw the bullets
         for (list<struct bullet>::iterator it = bullets.begin(); it != bullets.end(); it++) {
-            if ((*it).going_up) {
-                mvaddch(delta_y + (*it).y, delta_x + (*it).x, bullet_sp);
-            } else {
-                mvaddch(delta_y + (*it).y, delta_x + (*it).x, enemy_bullet_sp);
+            if ((*it).active) {
+                if ((*it).going_up) {
+                    mvaddch(delta_y + (*it).y, delta_x + (*it).x, bullet_sp);
+                } else {
+                    mvaddch(delta_y + (*it).y, delta_x + (*it).x, enemy_bullet_sp);
+                }
             }
         }
 
@@ -229,17 +323,20 @@ int main() {
                 case KEY_LEFT:
                 case 'A':
                 case 'a':
-                move_player(&player_1, -1, game_width);
-                break;
+                    move_player(&player_1, -1, game_width);
+                    break;
                 case KEY_RIGHT:
                 case 'D':
                 case 'd':
-                move_player(&player_1, 1, game_width);
-                break;
+                    move_player(&player_1, 1, game_width);
+                    break;
 
                 case ' ':
-                player_fire(player_1, &bullets);
-                break;
+                    if (get_time_millies(clock() - cd) > 500) {
+                        cd = clock();
+                        player_fire(player_1, &bullets);
+                    }
+                    break;
             }
         }
     }
