@@ -26,6 +26,14 @@ char bullet_sp = '^';
 
 char enemy_bullet_sp = '*';
 
+char you_won[] = "YOU WON!!\n";
+char you_lose[] = "YOU LOSE!!\n";
+char final_score_text[] = "SCORE :\n";
+char game_name[] = "> CONSOLE INVADERS <\n";
+char score_text[] = " : SCORE\n";
+
+bool won;
+
 struct alien {
   int x, y;
   int w, h;
@@ -84,12 +92,14 @@ void destroy_alien(struct alien *a, int *score, float *action) {
     (*action) -= 3.5 * FRAME_DURATION_MILLIES;
 }
 
-void lose() {
-
+void lose(bool* end) {
+    (*end) = TRUE;
+    won = FALSE;
 }
 
-void win() {
-
+void win(bool* end) {
+    (*end) = TRUE;
+    won = TRUE;
 }
 
 int main() {
@@ -118,8 +128,7 @@ int main() {
     int score = 0;
     clock_t cd = clock();
 
-    char game_name[] = "> CONSOLE INVADERS <\n";
-    char score_text[] = ":SCORE\n";
+    bool end = FALSE;
 
     // add player
     {
@@ -183,14 +192,14 @@ int main() {
         for (int i = 0; i < aliens.size(); i ++) {
             if (aliens[i].y + aliens[i].h >= player_1.y) {
                 if (aliens[i].y + aliens[i].h >= game_height) {
-                    lose();
+                    lose(&end);
                 }
 
                 if (in_rectangle(player_1.y, player_1.x, player_1.y + player_1.h,
                     player_1.x + player_1.w, aliens[i].y + aliens[i].h, aliens[i].x)
                     || in_rectangle(player_1.y, player_1.x, player_1.y + player_1.h,
                     player_1.x + player_1.w, aliens[i].y + aliens[i].h, aliens[i].x + aliens[i].w - 1)) {
-                        lose();
+                        lose(&end);
                     }
             }
         }
@@ -231,7 +240,7 @@ int main() {
             } else {
                 // ship collision
                 if (in_rectangle(player_1.y, player_1.x, player_1.y + player_1.h, player_1.x + player_1.w, (*it).y, (*it).x)) {
-                    lose();
+                    lose(&end);
                 }
             }
         }
@@ -273,17 +282,19 @@ int main() {
         }
 
         // draw score bar
-        int score_text_start = delta_x + game_width - 20;
-        for (int i = 0; i < strlen(score_text); i++) {
-            mvaddch(delta_y + game_height + 1, score_text_start + i, score_text[i]);
-        }
-        for (int i = 1; i < 6; i ++) {
-            int num = score;
-            for (int k = 1; k < i; k ++) {
-                num /= 10;
+        {
+            int score_text_start = delta_x + game_width - 20;
+            for (int i = 0; i < strlen(score_text); i++) {
+                mvaddch(delta_y + game_height + 1, score_text_start + i, score_text[i]);
             }
-            char c = num % 10 + '0';
-            mvaddch(delta_y + game_height + 1, score_text_start - i , c);
+            for (int i = 1; i < 6; i ++) {
+                int num = score;
+                for (int k = 1; k < i; k ++) {
+                    num /= 10;
+                }
+                char c = num % 10 + '0';
+                mvaddch(delta_y + game_height + 1, score_text_start - i , c);
+            }
         }
 
         // draw the aliens
@@ -317,6 +328,11 @@ int main() {
             }
         }
 
+        // exit condition
+        if (end) {
+            break;
+        }
+
         // get input
         if ( (ch = getch()) != ERR) {
             switch (ch) {
@@ -341,4 +357,64 @@ int main() {
         }
     }
 
+    // clean up the screen before the end screen
+    werase(stdscr);
+
+    // end screen
+    {
+        // decide upon the text to be printed on the end screen
+        char *end_text;
+        if (won) {
+            end_text = you_won;
+        } else {
+            end_text = you_lose;
+        }
+
+        // get window size
+        getmaxyx(stdscr, scr_height, scr_width);
+
+        // print the text
+        {
+            int end_text_start = scr_width / 2 - strlen(end_text) / 2;
+            for (int i = 0; i < strlen(end_text); i++) {
+                mvaddch(scr_height / 2, end_text_start + i, end_text[i]);
+            }
+        }
+
+        // print the final score
+        {
+            // precalculate the final score
+            char final_score[] = "00000\n";
+            for (int i = 1; i < 6; i ++) {
+                int num = score;
+                for (int k = 1; k < i; k ++) {
+                    num /= 10;
+                }
+                char c = num % 10 + '0';
+                final_score[5 - i] = c;
+            }
+
+            // print the resulting text
+            int final_score_start = scr_width / 2 - (strlen(final_score_text) + strlen(final_score)) / 2;
+            for (int i = 0; i < strlen(final_score_text) + strlen(final_score); i++) {
+                if (i >= strlen(final_score_text)) {
+                    mvaddch(scr_height / 2 + 1, final_score_start + i, final_score[i - strlen(final_score_text)]);
+                } else {
+                    mvaddch(scr_height / 2 + 1, final_score_start + i, final_score_text[i]);
+                }
+            }
+        }
+
+        // blocking loop
+        for (;;) {
+            // awainting for any input to exit
+            if ( (ch = getch()) != ERR) {
+                break;
+            }
+        }
+    }
+
+    // clean up
+    endwin();
+    return 0;
 }
